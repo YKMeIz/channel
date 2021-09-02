@@ -11,6 +11,7 @@ import (
 func doPublish(b *Broadcast, wg *sync.WaitGroup) {
 	for i := 0; i < 5; i++ {
 		b.Publish([]byte(strconv.Itoa(i)))
+		b.SendToID(3, 0, []byte("send to id 2..."))
 	}
 	wg.Done()
 }
@@ -40,8 +41,18 @@ func TestBroadcast(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	b.RegisterHandleFunc(0, func(buf []byte) []byte {
+		log.Println("0: recv func msg:", string(buf))
+		return nil
+	})
+
+	b.RegisterHandleFunc(3, func(buf []byte) []byte {
+		log.Println("3: recv func msg:", string(buf))
+		return []byte("ok")
+	})
+
 	b.SubscribeFunc(2, func(buf []byte) {
-		log.Println("recv func msg:", string(buf))
+		log.Println("2: recv func msg:", string(buf))
 	})
 
 	go doConsume(b, &wg)

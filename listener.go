@@ -1,12 +1,18 @@
 package channel
 
-import "reflect"
+import (
+	"bytes"
+	"encoding/gob"
+	"reflect"
+)
 
 func (bc *Broadcast) listenAndServe() {
 	for {
 		select {
 		case msg := <-bc.pub:
 			go bc.broadcastMsg(msg)
+		case msg := <-bc.uni:
+			go bc.unicastMsg(msg)
 		default:
 		}
 	}
@@ -16,7 +22,7 @@ func (bc *Broadcast) broadcastMsg(b []byte) {
 	bc.sub.Range(func(key, value interface{}) bool {
 		t := reflect.TypeOf(value)
 		if t.Kind() == reflect.Func {
-			value.(func(b []byte))(b)
+			value.(func([]byte))(b)
 		}
 		if t.Kind() == reflect.Chan {
 			value.(chan []byte) <- b
@@ -29,6 +35,7 @@ func (bc *Broadcast) broadcastMsg(b []byte) {
 func NewBroadcast() *Broadcast {
 	bc := &Broadcast{
 		pub: make(chan []byte),
+		uni: make(chan []byte),
 	}
 	go bc.listenAndServe()
 	return bc
@@ -46,6 +53,69 @@ func (bc *Broadcast) Publish(b []byte) {
 	bc.pub <- b
 }
 
-func (bc *Broadcast) SubscribeFunc(id interface{}, f func(b []byte)) {
+func (bc *Broadcast) SubscribeFunc(id interface{}, f func([]byte)) {
 	bc.sub.Store(id, f)
+}
+
+//func (bc *Broadcast) SendToID(recvID, sendID interface{}, payload []byte) {
+//	v, ok := bc.sub.Load(recvID)
+//	if !ok {
+//		return
+//	}
+//
+//	m := message{
+//		Payload:  payload,
+//		ReceiverID: recvID,
+//		SenderID: sendID,
+//	}
+//
+//	if reflect.TypeOf(v).Kind() == reflect.Func {
+//		v.(func(b []byte))(m.gobEncode())
+//	}
+//
+//}
+//
+func (m *message) gobEncode() []byte {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(m); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
+func (m *message) gobDecode(b []byte) {
+	var buf bytes.Buffer
+	buf.Write(b)
+	if err := gob.NewDecoder(&buf).Decode(&m); err != nil {
+		panic(err)
+	}
+}
+
+func (bc *Broadcast) SendToID(recvID, sendID interface{}, payload []byte) {
+	m := message{
+		Payload:    payload,
+		ReceiverID: recvID,
+		SenderID:   sendID,
+	}
+
+	b := m.gobEncode()
+	bc.unicastMsg(b)
+}
+
+func (bc *Broadcast) unicastMsg(msg []byte) {
+	var m message
+	m.gobDecode(msg)
+	v, ok := bc.uniPool.Load(m.ReceiverID)
+	if !ok {
+		return
+	}
+	if reflect.TypeOf(v).Kind() == reflect.Func {
+		if resp := v.(func(payload []byte) []byte)(m.Payload); resp != nil {
+			bc.SendToID(m.SenderID, m.ReceiverID, resp)
+		}
+	}
+}
+
+func (bc *Broadcast) RegisterHandleFunc(id interface{}, handler func([]byte) []byte) {
+	bc.uniPool.Store(id, handler)
 }

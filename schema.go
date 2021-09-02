@@ -1,8 +1,17 @@
 package channel
 
-import "sync"
+import (
+	"sync"
+)
 
 type Broadcast struct {
-	sub sync.Map
-	pub chan []byte
+	sub     sync.Map
+	uniPool sync.Map
+	pub     chan []byte
+	uni     chan []byte
+}
+
+type message struct {
+	Payload              []byte
+	ReceiverID, SenderID interface{}
 }
