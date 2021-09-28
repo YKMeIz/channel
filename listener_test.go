@@ -99,3 +99,18 @@ func TestBroadcast(t *testing.T) {
 		t.Error("subscribe func 2 has received missed or duplicated message:", reg2, broadcastCount)
 	}
 }
+
+func TestUnicasetWithResponse(t *testing.T) {
+	b := NewBroadcast()
+	respMsg := []byte("b1: hello from main")
+
+	b.RegisterHandleFunc("b1", func(buf []byte) []byte {
+		log.Println("ID:b1: recv func msg:", string(buf))
+		return respMsg
+	})
+
+	resp := b.SendToIDResponse("b1", nil, []byte("hello from main"))
+	if bytes.Compare(resp, respMsg) != 0 {
+		t.Error("message sent and received mismatch")
+	}
+}

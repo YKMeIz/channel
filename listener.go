@@ -116,6 +116,30 @@ func (bc *Broadcast) unicastMsg(msg []byte) {
 	}
 }
 
+func (bc *Broadcast) SendToIDResponse(recvID, sendID interface{}, payload []byte) []byte {
+	m := message{
+		Payload:    payload,
+		ReceiverID: recvID,
+		SenderID:   sendID,
+	}
+
+	b := m.gobEncode()
+	return bc.unicastMsgResponse(b)
+}
+
+func (bc *Broadcast) unicastMsgResponse(msg []byte) []byte {
+	var m message
+	m.gobDecode(msg)
+	v, ok := bc.uniPool.Load(m.ReceiverID)
+	if !ok {
+		return nil
+	}
+	if reflect.TypeOf(v).Kind() == reflect.Func {
+		return v.(func(payload []byte) []byte)(m.Payload)
+	}
+	return nil
+}
+
 func (bc *Broadcast) RegisterHandleFunc(id interface{}, handler func([]byte) []byte) {
 	bc.uniPool.Store(id, handler)
 }
